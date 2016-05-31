@@ -5,6 +5,7 @@ Tests for the FixedWidth class.
 """
 
 import unittest
+from datetime import datetime
 from copy import deepcopy
 
 from ..fixedwidth import FixedWidth
@@ -125,3 +126,38 @@ class TestFixedWidth(unittest.TestCase):
         self.assertEquals(values["last_name"], "Smith")
         self.assertEquals(values["age"], 32)
         self.assertEquals(values["meal"], "vegetarian")
+
+    def test_datetime_formatting_to_string(self):
+        # Given a default date spec,
+        fw_config = deepcopy(SAMPLE_CONFIG)
+        fw_config['dob'] = {
+            'required': True,
+            'type': "datetime",
+            'start_pos': 69,
+            'length': 27,
+            'alignment': 'right',
+            'padding': ' '
+        }
+
+        # and some sample data,
+        test_data = {
+            'first_name': 'John',
+            'last_name': 'Doe',
+            'age': 42,
+            'meal': 'omnivore',
+            'dob': datetime(year=1985, month=12, day=1, hour=7, minute=55,
+                            second=23, microsecond=123456),
+        }
+
+        # when we generate a line based on the spec,
+        fw_obj = FixedWidth(fw_config, **test_data)
+        result = fw_obj.line
+
+        # then the line includes the default formatted date.
+        expected = 'John      Doe                                042omnivore' \
+                   '             1985-12-01T07:55:23.123456\r\n'
+        self.assertEqual(result, expected)
+
+# TODO formatting to dict
+# TODO formatting with timezone offset
+# TODO formatting with default or required/value

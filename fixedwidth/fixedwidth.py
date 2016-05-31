@@ -3,6 +3,7 @@ The FixedWidth class definition.
 """
 
 from decimal import Decimal
+from datetime import datetime
 from six import string_types
 
 
@@ -11,7 +12,7 @@ class FixedWidth(object):
     Class for converting between Python dictionaries and fixed-width
     strings.
 
-    Requires a 'config' dictonary. See unittest below for an example.
+    Requires a 'config' dictionary. See unittest below for an example.
 
     Notes:
         A field must have a start_pos and either an end_pos or a length.
@@ -19,12 +20,11 @@ class FixedWidth(object):
 
         A field may not have a default value if it is required.
 
-        Type may be string, integer, or decimal.
+        Type may be string, integer/numeric, datetime, or decimal.
 
         Alignment and padding are required.
 
         'required' must have a value.
-
     """
 
     def __init__(self, config, **kwargs):
@@ -76,7 +76,7 @@ class FixedWidth(object):
                 raise ValueError("%s end_pos must be *after* start_pos." % (key,))
 
             #make sure authorized type was provided
-            if not value['type'] in ('string', 'integer', 'decimal', 'numeric'):
+            if not value['type'] in ('string', 'integer', 'decimal', 'numeric', 'datetime'):
                 raise ValueError("Field %s has an invalid type (%s). Allowed: 'string', \
                     'integer', 'decimal', 'numeric'" % (key, value['type']))
 
@@ -100,6 +100,10 @@ class FixedWidth(object):
                     raise ValueError("Default value for %s is not a valid %s" \
                         % (key, value['type']))
 
+            self.datetime_format = '%Y-%m-%dT%H:%M:%S.%f%z'  # ISO 8601
+            if 'datetime_format' in value:
+                self.datetime_format = value['datetime_format']
+
         #ensure start_pos and end_pos or length is correct in config
         current_pos = 1
         for start_pos, field_name in self.ordered_fields:
@@ -120,9 +124,8 @@ class FixedWidth(object):
         self.data.update(kwargs)
 
     def validate(self):
-
         """
-        ensure the data in self.data is consistant with self.config
+        Ensure the data in self.data is consistent with self.config
         """
 
         type_tests = {
@@ -130,26 +133,29 @@ class FixedWidth(object):
             'decimal': lambda x: isinstance(x, Decimal),
             'integer': lambda x: str(x).isdigit(),
             'numeric': lambda x: str(x).isdigit(),
+            'datetime': lambda x: isinstance(x, datetime),
         }
 
         for field_name, parameters in self.config.items():
-
             if field_name in self.data:
-
+                data = self.data[field_name]
                 #make sure passed in value is of the proper type
-                if not type_tests[parameters['type']](self.data[field_name]):
+                if not type_tests[parameters['type']](data):
                     raise ValueError("%s is defined as a %s, \
                     but the value is not of that type." \
                     % (field_name, parameters['type']))
 
-                #ensure value passed in is not too long for the field
-                if len(str(self.data[field_name])) > parameters['length']:
+                if parameters['type'] == 'datetime':
+                    data_str = data.strftime(self.datetime_format)
+                else:
+                    data_str = str(data)
+
+                # Ensure value passed in is not too long for the field.
+                if len(data_str) > parameters['length']:
                     raise ValueError("%s is too long (limited to %d \
                         characters)." % (field_name, parameters['length']))
 
-                if 'value' in parameters \
-                    and parameters['value'] != self.data[field_name]:
-
+                if 'value' in parameters and parameters['value'] != data:
                     raise ValueError("%s has a value in the config, \
                         and a different value was passed in." % (field_name,))
 
@@ -182,13 +188,14 @@ class FixedWidth(object):
         line = ''
         #for start_pos, field_name in self.ordered_fields:
         for field_name in [x[1] for x in self.ordered_fields]:
-
+            datum = ''
             if field_name in self.data:
-                datum = str(self.data[field_name])
-            else:
-                datum = ''
+                data = self.data[field_name]
+                if self.config[field_name]['type'] == 'datetime':
+                    datum = data.strftime(self.datetime_format)
+                else:
+                    datum = str(data)
 
-            justify = None
             if self.config[field_name]['alignment'] == 'left':
                 justify = datum.ljust
             else:
@@ -219,6 +226,7 @@ class FixedWidth(object):
                 'string': lambda x: str(x).strip(),
                 'decimal': Decimal,
                 'numeric': lambda x: str(x).strip(),
+                'datetime': lambda x: x.strptime(self.datetime_format)
             }
 
             self.data[field_name] = conversion[self.config[field_name]\
